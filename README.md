@@ -7,7 +7,7 @@ If you want to use the raw url into a template, you can follow this syntax:
 
 ```
 <video>
-  <source src="<?php print $content['field_phone_number'][0]['#markup'];?>" type="video/mp4">
+  <source src="<?php print $content['field_stream_video'][0]['#markup'];?>" type="video/mp4">
 </video>
 ```
 
