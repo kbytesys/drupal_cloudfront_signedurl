@@ -1,0 +1,272 @@
+<?php
+function cloudfront_signedurl_menu() {
+    $items = array();
+
+    $items['admin/config/cloudfront_signedurl'] = array(
+        'title' => 'Configure Cloudfront Signed Url',
+        'description' => 'Configuration for Cloudfront Signed Url module',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('cloudfront_signedurl_form'),
+        'access arguments' => array('access administration pages'),
+        'type' => MENU_NORMAL_ITEM,
+    );
+
+    return $items;
+}
+
+function cloudfront_signedurl_form($form, &$form_state) {
+    $form['cloudfront_signedurl_keypairid'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Cloudfront Keypair ID'),
+        '#size' => 50,
+        '#maxlength' => 50,
+        '#description' => t('The keypair id of the cloudfront access key.'),
+        '#required' => TRUE,
+        '#default_value' => variable_get('cloudfront_signedurl_keypairid'),
+    );
+
+    $form['cloudfront_signedurl_key'] = array(
+        '#type' => 'textarea',
+        '#title' => t('Cloudfront Private Key'),
+        '#rows' => 30,
+        '#description' => t('Cloudfront private access key.'),
+        '#required' => TRUE,
+        '#default_value' => variable_get('cloudfront_signedurl_key'),
+    );
+
+
+    return system_settings_form($form);
+}
+
+function cloudfront_signedurl_field_info() {
+    return array(
+        'cloudfront_signedurl' => array(
+            'label' => t('Cloudfront Signed Url'),
+            'description' => t("Url to sign for Amazon Cloudfront cdn. "),
+            'default_widget' => 'text_textfield',
+            'default_formatter' => 'cloudfront_signedurl',
+        ),
+    );
+}
+
+function cloudfront_signedurl_field_schema($field) {
+    switch($field['type']) {
+        case 'cloudfront_signedurl':
+            $columns = array(
+                'url' => array(
+                    'type' => 'varchar',
+                    'length' => '250',
+                    'not null' => FALSE,
+                ),
+                'link_text' => array(
+                    'type' => 'varchar',
+                    'length' => '200',
+                    'not null' => TRUE,
+                ),
+                'expire_mins' => array(
+                    'type' => 'int',
+                    'unsigned' => TRUE,
+                    'not null' => FALSE,
+                ),
+                'check_client_ip' => array(
+                    'type' => 'int',
+                    'unsigned' => TRUE,
+                    'default' => '0',
+                    'not null' => FALSE,
+                ),
+            );
+            break;
+    }
+    return array(
+        'columns' => $columns,
+        'indexes' => array(),
+    );
+}
+
+function cloudfront_signedurl_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+    foreach ($items as $delta => $item) {
+        if (!empty($item['url'])) {
+            if(!valid_url($item['url'], true)) {
+                $errors[$field['field_name']][$langcode][$delta][] = array(
+                    'error' => 'cloudfront_signedurl_urlerror',
+                    'message' => t('The url is not valid.'),
+                );
+            }
+            if($item['expire_mins'] < 1)
+            {
+                $errors[$field['field_name']][$langcode][$delta][] = array(
+                    'error' => 'cloudfront_signedurl_expireerror',
+                    'message' => t('Validity Time must be greater than zero.'),
+                );
+            }
+        }
+    }
+}
+
+function cloudfront_signedurl_field_widget_error($element, $error, $form, &$form_state) {
+    switch ($error['error']) {
+        case 'cloudfront_signedurl_urlerror':
+            form_error($element['url'], $error['message']);
+            break;
+        case 'cloudfront_signedurl_expireerror':
+            form_error($element['expire_mins'], $error['message']);
+            break;
+    }
+}
+
+function cloudfront_signedurl_field_is_empty($item, $field) {
+    $temp = array_keys($field['columns']);
+    $key = array_shift($temp);
+    return empty($item[$key]);
+}
+
+function cloudfront_signedurl_field_widget_info() {
+    return array(
+        'cloudfront_signedurl' => array(
+            'label' => t('Cloudfront Signed Url'),
+            'field types' => array('cloudfront_signedurl'),
+        ),
+    );
+}
+
+function cloudfront_signedurl_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+    $widget = $element;
+    $widget['#delta'] = $delta;
+
+    switch ($instance['widget']['type']) {
+        case 'cloudfront_signedurl':
+
+            $settings = $form_state['field'][$instance['field_name']][$langcode]['field']['settings'];
+
+            $fields = array(
+                'url' => t('CDN Url'),
+                'expire_mins' => t('Validity Time (minutes)'),
+                'check_client_ip' => t('Check the client ip'),
+                'link_text' => t('Text of the url link (optional)'),
+            );
+
+            $element += array(
+                '#type' => 'fieldset',
+            );
+
+            foreach ($fields as $key => $label) {
+                $value = isset($items[$delta][$key]) ? $items[$delta][$key] : '';
+
+                $element[$key] = array(
+                    '#type' => 'textfield',
+                    '#size' => 3,
+                    '#maxlength' => 3,
+                    '#title' => $label,
+                    '#default_value' => $value,
+                );
+                switch($key) {
+                    case 'url':
+                        $element[$key]['#required'] = TRUE && $element['#required'];
+                    case 'link_text':
+                        $element[$key]['#size'] = 200;
+                        $element[$key]['#maxlength'] = 200;
+                        break;
+                    case 'expire_mins':
+                        $element[$key]['#default_value'] = 60;
+                        $element[$key]['#required'] = TRUE && $element['#required'];
+                        break;
+                    case 'check_client_ip':
+                        $element[$key]['#type'] = 'checkbox';
+                        $element[$key]['#default_value'] = $value ? $value : 0;
+                        $element[$key]['#return_value'] = 1;
+                        break;
+                }
+            }
+            break;
+    }
+    return $element;
+}
+
+function cloudfront_signedurl_field_formatter_info() {
+    return array(
+        'cloudfront_signedurl_link' => array(
+            'label' => t('Cloudfront Signed Url Link'),
+            'field types' => array('cloudfront_signedurl'),
+        ),
+        'cloudfront_signedurl_raw' => array(
+            'label' => t('Cloudfront Signed Url Raw'),
+            'field types' => array('cloudfront_signedurl'),
+        ),
+    );
+}
+
+function cloudfront_signedurl_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+    $element = array();
+
+    switch ($display['type']) {
+        case 'cloudfront_signedurl_link':
+            foreach ($items as $delta => $item) {
+
+                // Create the signed url
+                $signed_url = cloudfront_signedurl_sign($item);
+                if(!$signed_url)
+                    continue;
+
+                $element[$delta] = array(
+                    '#type' => 'html_tag',
+                    '#tag' => 'a',
+                    '#attributes' => array('href' => $signed_url),
+                    '#value' => empty($item['link_text']) ? $signed_url : $item['link_text']
+                );
+            }
+            break;
+        case 'cloudfront_signedurl_raw':
+            foreach ($items as $delta => $item) {
+
+                // Create the signed url
+                $signed_url = cloudfront_signedurl_sign($item);
+
+                $element[$delta] = array(
+                    '#markup' => $signed_url
+                );
+            }
+            break;
+
+    }
+    return $element;
+}
+
+function cloudfront_signedurl_sign($item) {
+    $keyPairId = variable_get('cloudfront_signedurl_keypairid');
+    $timeout = $item['expire_mins'] * 60;
+    $expires = time() + $timeout;
+    $resource = $item['url'];
+
+    if($item['check_client_ip']) {
+        $json = '{"Statement":[{"Resource":"' . $resource . '","Condition":{"DateLessThan":{"AWS:EpochTime":' . $expires . '},"IpAddress":{"AWS:SourceIp":"' . ip_address() . '"}}}]}';
+    }
+    else {
+        $json = '{"Statement":[{"Resource":"' . $resource . '","Condition":{"DateLessThan":{"AWS:EpochTime":' . $expires . '}}}]}';
+    }
+
+
+    // throw new Exception('Failed to load cloudfront private key!');
+    //Create the private key
+    $key = openssl_get_privatekey(variable_get('cloudfront_signedurl_key'));
+    if(!$key)
+    {
+        drupal_set_message(t('Failed to load Cloudfront private key!'), 'error');
+        return NULL;
+    }
+
+    //Sign the policy with the private key
+    if(!openssl_sign($json, $signed_policy, $key, OPENSSL_ALGO_SHA1))
+    {
+        drupal_set_message(t('Failed to sign Cloudfront policy: ') . openssl_error_string());
+        return NULL;
+    }
+
+    //Create url safe signed policy
+    $base64_signed_policy = base64_encode($signed_policy);
+    $signature = str_replace(array('+','=','/'), array('-','_','~'), $base64_signed_policy);
+
+    //Construct the URL
+    $url = $resource.'?Expires='.$expires.'&Signature='.$signature.'&Key-Pair-Id='.$keyPairId;
+
+    return $url;
+}

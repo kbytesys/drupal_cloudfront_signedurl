@@ -1,0 +1,4 @@
+name = Amazon Cloudfront Signed Url
+description = Helper and fieldtype for signed cloudfront contents.
+core = 7.x
+configure = admin/config/cloudfront_signedurl
